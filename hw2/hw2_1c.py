@@ -23,7 +23,7 @@ for n in ns:
         # the variance of $\sqrt{n}(\hat{\tau} - \tau_\circ)$
         v_n = 1/np.linalg.norm(theta_n - a) ** 2 * \
             (theta_n - a) @ v_theta @ (theta_n - a).transpose()
-            # calculate confidence interval with normal distribution
+        # calculate confidence interval with normal distribution
         intv = st.norm.interval(confidence=conf_lev,
                                 loc=np.linalg.norm(theta_n - a),
                                 scale=np.sqrt(v_n/n))
