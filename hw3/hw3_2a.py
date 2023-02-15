@@ -1,94 +1,84 @@
-import numpy as np
-from numpy.random import multivariate_normal, exponential
+import jax.numpy as jnp
+import jax
 
-ns = [10, 100, 1000, 10000]
+
+ns = [10, 100, 1000]
 
 c = 3e8
-a1 = np.array([0, 0])
-a2 = np.array([350, 50])
-a3 = np.array([250, 350])
-s = np.array([200, 200])
-eps = 1e-7
+a1 = jnp.array([0, 0])
+a2 = jnp.array([350, 50])
+a3 = jnp.array([250, 350])
+s = jnp.array([200, 200])
+eps = 1e-10
+d = 3
 K = 1000
 
-
-mean = 2/c*np.linalg.norm(s - np.array([a1, a2, a3]), axis=1)
-cov = 1e-14 * np.identity(3)
+key = jax.random.PRNGKey(42)
 
 
-def risk(z, s):
-    mu = np.array([
-        np.linalg.norm(s - a1),
-        np.linalg.norm(s - a2),
-        np.linalg.norm(s - a3),
+# functions for sn optimization: single sample
+def _sn_objective_sample(z, s):
+    mu = jnp.array([
+        jnp.linalg.norm(s - a1),
+        jnp.linalg.norm(s - a2),
+        jnp.linalg.norm(s - a3),
     ])
-    values = np.sum((z - 2/c*mu) ** 2, axis=1)
-    return values.mean()
+    values = (z - 2/c*mu) ** 2
+    return values.sum()
 
 
-def grad(z, s):
-    mu = np.array([
-        np.linalg.norm(s - a1),
-        np.linalg.norm(s - a2),
-        np.linalg.norm(s - a3),
+# vectorized objective function
+sn_objective_vec = jax.jit(jax.vmap(_sn_objective_sample, (0, None)))
+
+
+# gradient of the sn objective function: single sample
+def _sn_grad_sample(z, s):
+    mu = jnp.array([
+        jnp.linalg.norm(s - a1),
+        jnp.linalg.norm(s - a2),
+        jnp.linalg.norm(s - a3),
     ])
-    # print(mu)
     gradient = 2*(2/c*mu - z)
     gradient = 2/c * gradient @ \
-        np.array([(s - a1)/(mu[0] + eps),
-                  (s - a2)/(mu[1] + eps),
-                  (s - a3)/(mu[2] + eps)])
-    gradient = np.mean(gradient, axis=0)
+        jnp.array([(s - a1)/(mu[0] + eps),
+                   (s - a2)/(mu[1] + eps),
+                   (s - a3)/(mu[2] + eps)])
     return gradient
 
 
-def get_sn(start, num_steps, lr, z):
+# vectorized grad for sn objective function
+sn_grad = jax.jit(lambda zs, s: jax.vmap(_sn_grad_sample,
+                                         (0, None))(zs, s).mean())
+
+
+# loss function: single sample
+def loss_sample(z, s, v):
+    return d/2 + jax.log(v) + _sn_objective_sample(z, s)/(2*v)
+
+
+# vectorized loss function
+loss_vec = jax.jit(jax.vmap(loss_sample, (0, None, None), 0))
+
+
+def get_sn(start, num_steps, lr, zs):
     for _ in range(num_steps):
-        gradient = grad(z, start)
+        gradient = sn_grad(zs, start)
         start -= lr * gradient
     return start
 
 
-def consistent_test(true_zs, sn, vn, K):
-    less_than = 0
-    n = true_zs.shape[0]
-    mean = 2/c*np.linalg.norm(sn - np.array([a1, a2, a3]), axis=1)
-    cov = vn * np.identity(3)
-    for _ in range(K):
-        gen_zs = multivariate_normal(mean, cov, size=n)
-        E_gen = np.average(gen_zs)
-        T_true = np.average(np.square(true_zs - E_gen))
-        T_gen = np.average(np.square(gen_zs - E_gen))
-        less_than = less_than + 1 if T_gen <= T_true else less_than
-    return less_than/K
-
+mean = 2/c*jnp.linalg.norm(s - jnp.array([a1, a2, a3]), axis=1)
+cov = 1e-14 * jnp.eye(3)
 
 for n in ns:
     # estimate thetas
-    true_zs = multivariate_normal(mean, cov, size=n)
-    sn = get_sn(start=np.array([0.0, 0.0]),
+    _, key = jax.random.split(key)
+    true_zs = jax.random.multivariate_normal(key, mean, cov, shape=(n, ))
+
+    sn = get_sn(start=jnp.array([0.0, 0.0]),
                 num_steps=2000,
-                lr=1e14,
-                z=true_zs)
-    vn = risk(true_zs, sn) / 3
+                lr=1e15,
+                zs=true_zs)
+    vn = sn_objective_vec(true_zs, sn).mean() / 3
     print(f"sn: {sn}, vn: {vn}")
-    # generate data
-    P_theta = consistent_test(true_zs, sn, vn, K)
-    alpha_theta = min(P_theta, 1-P_theta)
-    print(f"Gaussian data: n={n}, alpha_theta={alpha_theta:.3f}")
 print("===========")
-
-for n in ns:
-    # estimate thetas
-    true_zs = list(map(lambda m: exponential(m, size=n), mean))
-    true_zs = np.array(true_zs).transpose()
-    sn = get_sn(start=np.array([0.0, 0.0]),
-                num_steps=2000,
-                lr=1e14,
-                z=true_zs)
-    vn = risk(true_zs, sn) / 3
-    print(f"sn: {sn}, vn: {vn}")
-    # generate data
-    P_theta = consistent_test(true_zs, sn, vn, K)
-    alpha_theta = min(P_theta, 1-P_theta)
-    print(f"Exponential data: n={n}, alpha_theta={alpha_theta:.3f}")

@@ -47,8 +47,16 @@ def _ln_factorial(z):
     return jax.lax.fori_loop(1, z+1, lambda z, acc: jnp.log(z)+acc, 0)
 
 
+def _stirling_ln_factorial(z):
+    return z * jnp.log(z) - z + 1
+
+
 def loss(z, theta):
     return -(z*jnp.log(theta) - theta - _ln_factorial(z))
+
+
+def approx_loss(z, theta):
+    return -(z*jnp.log(theta) - theta - _stirling_ln_factorial(z))
 
 
 for n in ns:
@@ -59,13 +67,14 @@ for n in ns:
         p = 40/(r+40)
         true_zs = np.random.negative_binomial(r, p, size=n)
         true_zs = jnp.array(true_zs)
-        print(true_zs)
+        # print(true_zs)
 
         # estimate theta
         theta_hat = jnp.average(true_zs)
 
         # function to calculate T
-        vecloss = jax.vmap(lambda z: loss(z, theta_hat))
+        vecloss = jax.vmap(lambda z: loss(z, theta_hat)) if r <= 1e2 \
+            else jax.vmap(lambda z: approx_loss(z, theta_hat))
         T_fn = jax.jit(lambda zs: vecloss(zs).std()**2)
 
         T_true = T_fn(true_zs)
