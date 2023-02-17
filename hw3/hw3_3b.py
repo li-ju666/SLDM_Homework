@@ -48,7 +48,7 @@ def objective_grad(zs, s):
                        (s - a2)/(mu[1] + eps),
                        (s - a3)/(mu[2] + eps)])
     return (4/c * (2/c*mu - E_z) @ dmuds /
-            _objective_vec(zs, s).mean(axis=0)) + (s-s0)/(n*v0)
+            (_objective_vec(zs, s).mean(axis=0))/d) + (s-s0)/(n*v0)
 
 
 # loss function: single sample
