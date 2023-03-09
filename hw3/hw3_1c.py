@@ -1,35 +1,3 @@
-# import numpy as np
-# from numpy.random import poisson, negative_binomial
-
-
-# ns = [5, 50, 500]
-# rs = [1e1, 1e4]
-
-# K = 1000
-
-
-# def sim(true_zs, theta, K):
-#     less_than = 0
-#     for _ in range(K):
-#         n = true_zs.shape[0]
-#         gen_zs = poisson(theta, size=n)
-#         E_gen = np.average(gen_zs)
-#         T_true = np.average(np.square(true_zs - E_gen))
-#         T_gen = np.average(np.square(gen_zs - E_gen))
-#         less_than = less_than + 1 if T_gen <= T_true else less_than
-#     return less_than/K
-
-
-# print("n, r, theta, alpha_theta")
-# for n in ns:
-#     for r in rs:
-#         p = 40/(r+40)
-#         true_zs = negative_binomial(r, p, size=n)
-#         theta = np.average(true_zs)
-#         P_theta = sim(true_zs, theta, K)
-#         alpha_theta = min(P_theta, 1-P_theta)
-#         print(f"{n}, {r}, {theta}, {alpha_theta:.3f}")
-
 import jax.numpy as jnp
 import numpy as np
 import jax
@@ -61,18 +29,16 @@ def approx_loss(z, theta):
 
 for n in ns:
     for r in rs:
-        # generate true samples
-        # _, key = jax.random.split(key)
-
         p = 40/(r+40)
         true_zs = np.random.negative_binomial(r, p, size=n)
         true_zs = jnp.array(true_zs)
-        # print(true_zs)
 
         # estimate theta
         theta_hat = jnp.average(true_zs)
 
         # function to calculate T
+        # Note: Stirling approximation is used for large z:
+        # ln(z!) \approx nln(n)-n+1
         vecloss = jax.vmap(lambda z: loss(z, theta_hat)) if r <= 1e2 \
             else jax.vmap(lambda z: approx_loss(z, theta_hat))
         T_fn = jax.jit(lambda zs: vecloss(zs).std()**2)
@@ -88,6 +54,5 @@ for n in ns:
 
         P_theta = less_than/K
         alpha_theta = min(P_theta, 1-P_theta)
-        print(f"n={n}, r={r}, theta={theta_hat:.3f}, alpha_theta={alpha_theta:.3f}")
-        # print(f"{n} & {theta_hat:.3f} & {alpha_theta:.3f} & "
-        #       f"{True if alpha_theta < 0.01 else False} \\\\")
+        print(f"n={n}, r={r}, theta={theta_hat:.3f},"
+              f"alpha_theta={alpha_theta:.3f}")
