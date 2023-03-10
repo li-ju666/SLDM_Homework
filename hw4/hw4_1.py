@@ -1,6 +1,4 @@
-import jax.numpy as jnp
 import numpy as np
-import jax
 from scipy import stats
 import cvxpy as cp
 
@@ -44,18 +42,21 @@ def estimate_theta(weights, zs):
 
 def estimate_weights(zs, theta, eps_tilde):
     losses = loss(zs, theta).transpose()
-    weights = cp.Variable(n)
+    weights = cp.Variable(n, pos=True)
     prob = cp.Problem(
         cp.Minimize(losses @ weights),
-        [weights >= 0,
-         np.ones(n).transpose() @ weights == 1])
-    prob.solve()
+        [np.ones(n).transpose() @ weights == 1,
+         cp.sum(cp.entr(weights)) >=
+         np.log((1-eps_tilde)*zs.shape[0]),
+         ])
+    # print(prob.is_dcp())
+    # prob.solve(verbose=True)
     return weights.value
 
 
 weights = 1/n*np.ones(n)
 
-for _ in range(1):
+for i in range(100):
     theta = estimate_theta(weights, zs)
     weights = estimate_weights(zs, theta, eps_tilde)
-    print(weights)
+    print(f"Step {i}: {theta} ===============")
