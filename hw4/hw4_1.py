@@ -5,7 +5,7 @@ import cvxpy as cp
 
 n = 100
 eps = 0.2
-eps_tilde = 0.4
+eps_tildes = [0.1, 0.2, 0.3, 0.4]
 
 # parameters for true distributions
 mu = np.array([200, 200])
@@ -42,6 +42,7 @@ def estimate_theta(weights, zs):
 
 def estimate_weights(zs, theta, eps_tilde):
     losses = loss(zs, theta).transpose()
+    # print(losses)
     weights = cp.Variable(n, pos=True)
     prob = cp.Problem(
         cp.Minimize(losses @ weights),
@@ -49,14 +50,21 @@ def estimate_weights(zs, theta, eps_tilde):
          cp.sum(cp.entr(weights)) >=
          np.log((1-eps_tilde)*zs.shape[0]),
          ])
-    # print(prob.is_dcp())
-    # prob.solve(verbose=True)
+    prob.solve(verbose=False)
+    # prob.solve(solver=cp.SCS, verbose=True)
     return weights.value
 
+for eps_tilde in eps_tildes:
 
-weights = 1/n*np.ones(n)
+    weights = 1/n*np.ones(n)
+    last_theta = np.array([0., 0.])
+    threshold = 1e-4
+    improvement = 1e3
 
-for i in range(100):
-    theta = estimate_theta(weights, zs)
-    weights = estimate_weights(zs, theta, eps_tilde)
-    print(f"Step {i}: {theta} ===============")
+    while improvement >= threshold:
+        theta = estimate_theta(weights, zs)
+        improvement = np.linalg.norm(theta - last_theta)
+        last_theta = theta
+        weights = estimate_weights(zs, theta, eps_tilde)
+    print(f"Eps_tilde: {eps_tilde} with theta: {theta}")
+print(f"ERM theta {estimate_theta(None, zs)}")
