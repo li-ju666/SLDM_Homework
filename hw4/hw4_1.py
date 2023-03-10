@@ -1,6 +1,7 @@
 import numpy as np
 from scipy import stats
 import cvxpy as cp
+# from matplotlib import pyplot
 
 
 n = 100
@@ -15,21 +16,27 @@ c = 2 * v / (v - 2) * sigma
 
 
 # generate samples from true mixed distributions
-choices = stats.bernoulli.rvs(1-eps, size=n).astype(bool)
+corrupted_nums = stats.bernoulli.rvs(eps, size=n).sum()
 
 uncorrupted = stats.multivariate_normal.rvs(
-    mu, sigma, size=n,
+    mu, sigma, size=n-corrupted_nums,
 )
 
 corrupts = stats.multivariate_t.rvs(
-    mu, c, df=v, size=n,
+    mu, c, df=v, size=corrupted_nums,
 )
-zs = np.concatenate([
-    uncorrupted[choices],
-    corrupts[np.logical_not(choices)],
-])
+
+zs = np.concatenate([uncorrupted, corrupts])
 np.random.shuffle(zs)
-# zs = jnp.array(zs)
+
+# pyplot.scatter(x=uncorrupted[:, 0],
+#                y=uncorrupted[:, 1],
+#                c="blue")
+# pyplot.scatter(x=corrupts[:, 0],
+#                y=corrupts[:, 1],
+#                c="red")
+
+# pyplot.show()
 
 
 def loss(zs, theta):
@@ -51,8 +58,9 @@ def estimate_weights(zs, theta, eps_tilde):
          np.log((1-eps_tilde)*zs.shape[0]),
          ])
     prob.solve(verbose=False)
-    # prob.solve(solver=cp.SCS, verbose=True)
+    # prob.solve(verbose=True)
     return weights.value
+
 
 for eps_tilde in eps_tildes:
 
