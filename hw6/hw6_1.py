@@ -10,46 +10,53 @@ key = jax.random.PRNGKey(0)
 key, _ = jax.random.split(key)
 
 # generate random x
-xs = jax.random.uniform(key, shape=(m,))
+xs = jax.random.uniform(key, shape=(m, 2))
+
 
 # policy function
-policy = jax.vmap(lambda x, w: 0 if jnp.multiply(x, jnp.ones(2)) >= w else 1,
-                  in_axes=(0, None))
+def get_a(x, w):
+    return x[0] * x[1] < w
 
 
-# function to sample y condition on x and a
-def sample_y(x, a, key):
-    key, _ = jax.random.split(key)
-    y = jax.random.normal(key, 1-x[0]*x[1], 0.1) if a else jax.random.normal(key, x[0]*x[1], 0.1)
-    return y
+# vectorize the policy function
+get_as = jax.vmap(get_a, in_axes=(0, None))
+
+
+# function to sample y condition on x and a from gaussian noise
+def sample_y(x, a, noise):
+    offset = jax.lax.cond(a, lambda _: x[0]*x[1], lambda _: 1-x[0]*x[1], None)
+    return noise * jnp.sqrt(0.1) + offset
 
 
 # vectorize the function
-sample_ys = jax.vmap(sample_y, in_axes=(0, 0, None))
+sample_ys = jax.vmap(sample_y, in_axes=(0, 0, 0))
 
 
-# w_space = jnp.linspace(0, 1, 1000)
-w_space = [0.5]
+w_space = jnp.linspace(0, 1, 1000)
 
 risks = []
 for w in w_space:
-    # compute actions
-    key = jax.random.split(key)
-    actions = policy(xs, w)
-    ys = sample_ys(xs, actions, key)
+    # sample actions
+    actions = get_as(xs, w)
+
+    # get random key to generate noise
+    key, _ = jax.random.split(key)
+
+    noises = jax.random.normal(key, shape=(m,))
+    # sample ys
+    ys = sample_ys(xs, actions, noises)
 
     # compute risk
-    risks.append(ys.sum())
+    risks.append(ys.mean())
 
 # plot the results
-
 fig, ax = plt.subplots(figsize=(4, 4))
 ax.grid(False)
-ax.plot(w_space, risks, s=2, c="blue", alpha=0.5)
+ax.plot(w_space, risks, alpha=0.5)
 
 ax.set_title(r"Risk of policies with different values of $w$")
 ax.set_xlabel(r"$w$")
 ax.set_ylabel("Risk")
 
-ax.legend()
+# ax.legend()
 fig.savefig("hw6_1.pdf", dpi=500)
